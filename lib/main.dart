@@ -1,81 +1,137 @@
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 
-Future<void> _messageHandler(RemoteMessage message) async {
-  print('background message ${message.notification!.body}');
+Future<void> _backgroundHandler(RemoteMessage message) async {
+  print("Background message: ${message.data}");
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  FirebaseMessaging.onBackgroundMessage(_messageHandler);
-  runApp(MessagingTutorial());
+  FirebaseMessaging.onBackgroundMessage(_backgroundHandler);
+  runApp(const MessagingApp());
 }
 
-class MessagingTutorial extends StatelessWidget {
+class MessagingApp extends StatelessWidget {
+  const MessagingApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: "FCM Demo",
       debugShowCheckedModeBanner: false,
-      title: 'Firebase Messaging',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: MyHomePage(title: 'Firebase Messaging'),
+      home: const HomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  MyHomePage({Key? key, this.title}) : super(key: key);
-  final String? title;
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
   @override
-  _MyHomePageState createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  late FirebaseMessaging messaging;
-  String? notificationText;
+class _HomePageState extends State<HomePage> {
+  String? token = "";
+  String lastMessage = "No messages yet";
+
   @override
   void initState() {
     super.initState();
-    messaging = FirebaseMessaging.instance;
-    messaging.subscribeToTopic("messaging");
+    final messaging = FirebaseMessaging.instance;
+
     messaging.getToken().then((value) {
-      print(value);
+      print("FCM TOKEN: $value");
+      setState(() => token = value);
     });
-    FirebaseMessaging.onMessage.listen((RemoteMessage event) {
-      print("message recieved");
-      print(event.notification!.body);
-      print(event.data.values);
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text("Notification"),
-            content: Text(event.notification!.body!),
-            actions: [
-              TextButton(
-                child: Text("Ok"),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          );
-        },
-      );
+
+    FirebaseMessaging.onMessage.listen((message) {
+      _handleNotification(message);
     });
+
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      print('Message clicked!');
+      _handleNotification(message);
     });
+  }
+
+  void _handleNotification(RemoteMessage message) {
+    final type = message.data["type"] ?? "regular";
+    final body = message.notification?.body ?? "No body";
+
+    setState(() => lastMessage = "$type → $body");
+
+    if (type == "important") {
+      _showImportantDialog(body);
+    } else {
+      _showRegularDialog(body);
+    }
+  }
+
+  void _showRegularDialog(String body) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Regular Notification"),
+        content: Text(body),
+        actions: [
+          TextButton(
+            child: const Text("OK"),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImportantDialog(String body) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.red.shade100,
+        title: const Text(
+          "🔥 IMPORTANT ALERT",
+          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+        ),
+        content: Text(body, style: const TextStyle(fontSize: 18)),
+        actions: [
+          TextButton(
+            child: const Text("OK"),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title!)),
-      body: Center(child: Text("Messaging Tutorial")),
+      appBar: AppBar(title: const Text("Firebase Notifications")),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Your FCM Token:",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            SelectableText(token ?? ""),
+            const SizedBox(height: 30),
+            const Text(
+              "Last message received:",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Text(lastMessage, style: const TextStyle(fontSize: 16)),
+          ],
+        ),
+      ),
     );
   }
 }
